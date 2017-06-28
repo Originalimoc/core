@@ -201,16 +201,19 @@ class Encryption extends Wrapper {
 	 */
 	public function file_get_contents($path) {
 
-		$encryptionModule = $this->getEncryptionModule($path);
+		//if ( \OC::$server->getAppConfig()->getValue('encryption', 'enabled', false) !== false) {
+		if ($this->encryptionManager->isEnabled() !== false) {
+			$encryptionModule = $this->getEncryptionModule($path);
 
-		if ($encryptionModule) {
-			$handle = $this->fopen($path, "r");
-			if (!$handle) {
-				return false;
+			if ($encryptionModule) {
+				$handle = $this->fopen($path, "r");
+				if (!$handle) {
+					return false;
+				}
+				$data = stream_get_contents($handle);
+				fclose($handle);
+				return $data;
 			}
-			$data = stream_get_contents($handle);
-			fclose($handle);
-			return $data;
 		}
 		return $this->storage->file_get_contents($path);
 	}
@@ -380,6 +383,7 @@ class Encryption extends Wrapper {
 		$signed = (isset($header['signed']) && $header['signed'] === 'true') ? true : false;
 		$fullPath = $this->getFullPath($path);
 		$encryptionModuleId = ($encryptionEnabled) ? $this->util->getEncryptionModuleId($header): "";
+		$createDecryptedFile = false;
 
 		if ($this->util->isExcluded($fullPath) === false) {
 
@@ -421,6 +425,9 @@ class Encryption extends Wrapper {
 						$encryptionModule = $this->encryptionManager->getEncryptionModule($encryptionModuleId);
 						$shouldEncrypt = $encryptionModule->shouldEncrypt($fullPath);
 						$signed = true;
+						if (\OC::$server->getSession()->get('decryptAllCmd') === true) {
+							$createDecryptedFile = true;
+						}
 					}
 				} else {
 					$info = $this->getCache()->get($path);
@@ -451,6 +458,9 @@ class Encryption extends Wrapper {
 			}
 
 			if ($shouldEncrypt === true && $encryptionModule !== null) {
+				if ($createDecryptedFile === true) {
+					return $this->storage->fopen($path, $mode);
+				}
 				$headerSize = $this->getHeaderSize($path);
 				$source = $this->storage->fopen($path, $mode);
 				if (!is_resource($source)) {
